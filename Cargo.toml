@@ -9,3 +9,4 @@ inquire = "0.7.5"
 tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-process = "0.2.5"
 anyhow = "1.0.83"
+structopt = "0.3.26"
