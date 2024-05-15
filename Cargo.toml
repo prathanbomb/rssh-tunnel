@@ -2,6 +2,13 @@
 name = "rssh-tunnel"
 version = "0.1.0"
 edition = "2021"
+authors = ["Bom <prathanbomb@gmail.com>"]
+description = "A command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts"
+readme = "README.md"
+repository = "https://github.com/prathanbomb/rssh-tunnel"
+license = "MIT"
+keywords = ["tunnel", "ssh", "command-line", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
