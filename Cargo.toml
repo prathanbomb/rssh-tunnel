@@ -1,6 +1,6 @@
 [package]
 name = "rssh-tunnel"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Bom <prathanbomb@gmail.com>"]
 description = "A command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts"
@@ -17,3 +17,6 @@ tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-process = "0.2.5"
 anyhow = "1.0.83"
 structopt = "0.3.26"
+serde = { version = "1.0.202", features = ["derive"] }
+dirs = "5.0.1"
+toml = "0.8.13"

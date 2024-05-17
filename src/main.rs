@@ -1,7 +1,10 @@
+use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use inquire::Text;
+use inquire::{Confirm, Text};
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -33,8 +36,21 @@ enum Cli {
         #[structopt(long, help = "Port to forward (default: no)")]
         port_forward: Option<String>,
     },
+
+    #[structopt(about = "Connect to SSH tunnel with profile name")]
+    Connect {
+        #[structopt(long, help = "Profile name to use")]
+        profile: String,
+    },
+
+    #[structopt(about = "List all profiles")]
+    Profiles,
+
+    #[structopt(about = "Show the profiles directory path")]
+    Path,
 }
 
+#[derive(Serialize, Deserialize)]
 struct SshConfig {
     jump_host_user: String,
     jump_host: String,
@@ -43,6 +59,20 @@ struct SshConfig {
     jump_port: String,
     target_port: String,
     port_forward: Option<String>,
+}
+
+impl Default for SshConfig {
+    fn default() -> Self {
+        SshConfig {
+            jump_host_user: String::default(),
+            jump_host: String::default(),
+            target_host_user: String::default(),
+            target_host: String::default(),
+            jump_port: String::from("22"),
+            target_port: String::from("22"),
+            port_forward: None,
+        }
+    }
 }
 
 impl SshConfig {
@@ -59,11 +89,11 @@ impl SshConfig {
         let target_host = Text::new("Enter target host address:")
             .prompt()
             .context("Failed to get target host address")?;
-        let jump_port: String = Text::new("Enter jump host SSH port (default: 22):")
+        let jump_port = Text::new("Enter jump host SSH port (default: 22):")
             .with_default("22")
             .prompt()
             .context("Failed to get jump host port")?;
-        let target_port: String = Text::new("Enter target host SSH port (default: 22):")
+        let target_port = Text::new("Enter target host SSH port (default: 22):")
             .with_default("22")
             .prompt()
             .context("Failed to get target host port")?;
@@ -114,6 +144,102 @@ impl SshConfig {
     }
 }
 
+struct SshProfileConfig {
+    profile_name: String,
+    ssh_config: SshConfig,
+}
+
+impl SshProfileConfig {
+    fn new(profile_name: String, ssh_config: SshConfig) -> Self {
+        SshProfileConfig {
+            profile_name,
+            ssh_config,
+        }
+    }
+}
+
+fn get_profiles_dir() -> Result<String> {
+    let home_dir = dirs::home_dir().context("Failed to get home directory")?;
+    let profiles_dir = home_dir.join(".rssh-tunnel");
+    Ok(profiles_dir.to_string_lossy().to_string())
+}
+
+fn load_profile(profile_name: &str) -> Result<SshProfileConfig> {
+    let profiles_dir = get_profiles_dir()?;
+    let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
+    let toml_str =
+        fs::read_to_string(profile_path).context("Failed to read profile file")?;
+    let ssh_config: SshConfig = toml::from_str(&toml_str)?;
+    Ok(SshProfileConfig::new(
+        profile_name.to_string(),
+        ssh_config,
+    ))
+}
+
+fn save_profile(profile_name: &str, ssh_config: &SshConfig) -> Result<()> {
+    let profiles_dir = get_profiles_dir()?;
+    fs::create_dir_all(&profiles_dir).context("Failed to create profiles directory")?;
+    let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
+    let toml_str = toml::to_string(&ssh_config).context("Failed to serialize profile")?;
+    fs::write(profile_path, toml_str).context("Failed to write profile file")?;
+    Ok(())
+}
+
+fn save_or_overwrite_profile(
+    profile_name: &str,
+    ssh_config: &SshConfig,
+) -> Result<()> {
+    let profiles_dir = get_profiles_dir()?;
+    let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
+
+    if profile_path.exists() {
+        let overwrite_prompt = Confirm::new(&format!(
+            "Profile '{}' already exists. Overwrite?",
+            profile_name
+        ))
+            .prompt()?;
+        if !overwrite_prompt {
+            return Ok(());
+        }
+    }
+    save_profile(profile_name, ssh_config)?;
+
+    Ok(())
+}
+
+fn list_profiles() -> Result<()> {
+    let profiles_dir = get_profiles_dir()?;
+    let profiles_path = Path::new(&profiles_dir);
+
+    if !profiles_path.exists() {
+        println!("No profiles found.");
+        return Ok(());
+    }
+
+    let mut profiles = Vec::new();
+    for entry in fs::read_dir(profiles_path)? {
+        let entry = entry?;
+        if let Some(extension) = entry.path().extension() {
+            if extension == "toml" {
+                if let Some(file_stem) = entry.path().file_stem() {
+                    profiles.push(file_stem.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    if profiles.is_empty() {
+        println!("No profiles found.");
+    } else {
+        println!("List of profiles:");
+        for profile in profiles {
+            println!(" - {}", profile);
+        }
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::from_args();
@@ -121,6 +247,8 @@ async fn main() -> Result<()> {
     match cli {
         Cli::Interactive => {
             let config = SshConfig::from_interactive_input()?;
+            let profile_name = Text::new("Enter profile name:").prompt()?;
+            save_or_overwrite_profile(&profile_name, &config)?;
             establish_tunnel(&config)?;
             println!("SSH tunnel closed gracefully!");
         }
@@ -134,8 +262,23 @@ async fn main() -> Result<()> {
                 target_port,
                 port_forward,
             )?;
+            let profile_name = Text::new("Enter profile name:").prompt()?;
+            save_or_overwrite_profile(&profile_name, &config)?;
             establish_tunnel(&config)?;
             println!("SSH tunnel closed gracefully!");
+        }
+        Cli::Connect { profile } => {
+            let profile_config = load_profile(&profile)
+                .context(format!("Failed to load profile '{}'", profile))?;
+            establish_tunnel(&profile_config.ssh_config)?;
+            println!("SSH tunnel closed gracefully!");
+        }
+        Cli::Profiles => {
+            list_profiles()?;
+        }
+        Cli::Path => {
+            let profiles_dir = get_profiles_dir()?;
+            println!("Profiles directory: {}", profiles_dir);
         }
     }
 
@@ -160,6 +303,5 @@ fn establish_tunnel(config: &SshConfig) -> Result<()> {
         .status()
         .context("Failed to establish SSH tunnel with port forwarding")?;
 
-    println!("SSH tunnel established successfully!");
     Ok(())
 }

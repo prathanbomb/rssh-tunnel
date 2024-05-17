@@ -2,6 +2,13 @@
 
 rssh-tunnel is a command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts.
 
+## Features
+
+- **Interactive and Non-Interactive Modes:** Choose between interactive mode, where the CLI prompts you for input, or non-interactive mode, where you provide input via command-line options.
+- **Profile Management:** Easily create, save, load, and overwrite SSH tunnel configurations as profiles.
+- **Port Forwarding:** Optionally set up port forwarding for your SSH tunnels.
+- **Easy Installation:** Install rssh-tunnel easily using Cargo, the Rust package manager.
+
 ## Installation
 
 To use rssh-tunnel, you need to have Rust installed. You can then install rssh-tunnel using Cargo, the Rust package manager:
@@ -73,6 +80,26 @@ rssh-tunnel tunnel \
 ```
 
 Replace `<jump_host_user>`, `<jump_host_address>`, `<target_host_user>`, `<target_host_address>`, `<jump_ssh_port>`, `<target_ssh_port>`, and `<forward_to_port>` with your desired values.
+
+### Connect with Profile
+You can connect to an SSH tunnel using a profile name with the following command:
+```bash
+rssh-tunnel connect --profile <profile_name>
+```
+Replace `<profile_name>` with the name of the profile you want to connect to.
+
+### Managing Profiles
+You can also manage your profiles by listing all profiles or checking the profiles directory path.
+
+To list all profiles:
+```bash
+rssh-tunnel profiles
+```
+
+To show the profiles directory path:
+```bash
+rssh-tunnel path
+```
 
 # License
 
