@@ -1,6 +1,6 @@
 [package]
 name = "rssh-tunnel"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Bom <prathanbomb@gmail.com>"]
 description = "A command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts"

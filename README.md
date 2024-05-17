@@ -14,14 +14,40 @@ cargo install rssh-tunnel
 rssh-tunnel provides both interactive and non-interactive modes for configuring SSH tunnels.
 
 ### Interactive Mode
-To start an interactive session where you'll be prompted for configuration details:
+To run the CLI in interactive mode:
 
 ```bash
 rssh-tunnel interactive
 ```
 
-## Non-Interactive Mode
+In interactive mode, the CLI will prompt you to enter the following information:
+* Jump host username
+* Jump host address
+* Target host username
+* Target host address
+* Jump host SSH port (default: 22)
+* Target host SSH port (default: 22)
+* Port to forward (default: no)
+
+### Non-Interactive Mode
 To create an SSH tunnel without interacting with the prompts, you can use the following command:
+
+```bash
+rssh-tunnel tunnel [OPTIONS]
+```
+
+#### Options:
+* `--jump_host_user`: Jump host username.
+* `--jump_host_address`: Jump host address.
+* `--target_host_user`: Target host username.
+* `--target_host_address`: Target host address.
+* `--jump_port`: Jump host SSH port (default: 22).
+* `--target_port`: Target host SSH port (default: 22).
+* `--port_forward`: Port to forward (default: no).
+
+#### Examples:
+
+Create an SSH tunnel without port forwarding:
 
 ```bash
 rssh-tunnel tunnel \
@@ -33,7 +59,7 @@ rssh-tunnel tunnel \
     --target-port <target_ssh_port>
 ```
 
-If you want to enable port forwarding in non-interactive mode, you can use the following command:
+Create an SSH tunnel with port forwarding:
 
 ```bash
 rssh-tunnel tunnel \
