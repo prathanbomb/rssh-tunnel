@@ -1,11 +1,11 @@
 [package]
-name = "rssh-tunnel"
-version = "0.1.2"
+name = "rush-tunnel"
+version = "1.0.0"
 edition = "2021"
 authors = ["Bom <prathanbomb@gmail.com>"]
 description = "A command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts"
 readme = "README.md"
-repository = "https://github.com/prathanbomb/rssh-tunnel"
+repository = "https://github.com/prathanbomb/rush-tunnel"
 license = "MIT"
 keywords = ["tunnel", "ssh", "command-line", "cli"]
 categories = ["command-line-utilities"]
@@ -14,7 +14,6 @@ categories = ["command-line-utilities"]
 clap = { version = "4.5.4", features = ["derive"] }
 inquire = "0.7.5"
 tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "macros"] }
-tokio-process = "0.2.5"
 anyhow = "1.0.83"
 structopt = "0.3.26"
 serde = { version = "1.0.202", features = ["derive"] }

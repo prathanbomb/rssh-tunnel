@@ -1,30 +1,30 @@
-# rssh-tunnel
+# rush-tunnel
 
-rssh-tunnel is a command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts.
+rush-tunnel is a command-line tool for creating SSH tunnels, allowing you to securely connect to remote hosts.
 
 ## Features
 
 - **Interactive and Non-Interactive Modes:** Choose between interactive mode, where the CLI prompts you for input, or non-interactive mode, where you provide input via command-line options.
 - **Profile Management:** Easily create, save, load, and overwrite SSH tunnel configurations as profiles.
 - **Port Forwarding:** Optionally set up port forwarding for your SSH tunnels.
-- **Easy Installation:** Install rssh-tunnel easily using Cargo, the Rust package manager.
+- **Easy Installation:** Install rush-tunnel easily using Cargo, the Rust package manager.
 
 ## Installation
 
-To use rssh-tunnel, you need to have Rust installed. You can then install rssh-tunnel using Cargo, the Rust package manager:
+To use rush-tunnel, you need to have Rust installed. You can then install rush-tunnel using Cargo, the Rust package manager:
 
 ```bash
-cargo install rssh-tunnel
+cargo install rush-tunnel
 ```
 
 ## Usage
-rssh-tunnel provides both interactive and non-interactive modes for configuring SSH tunnels.
+rush-tunnel provides both interactive and non-interactive modes for configuring SSH tunnels.
 
 ### Interactive Mode
 To run the CLI in interactive mode:
 
 ```bash
-rssh-tunnel interactive
+rush-tunnel interactive
 ```
 
 In interactive mode, the CLI will prompt you to enter the following information:
@@ -40,7 +40,7 @@ In interactive mode, the CLI will prompt you to enter the following information:
 To create an SSH tunnel without interacting with the prompts, you can use the following command:
 
 ```bash
-rssh-tunnel tunnel [OPTIONS]
+rush-tunnel tunnel [OPTIONS]
 ```
 
 #### Options:
@@ -57,7 +57,7 @@ rssh-tunnel tunnel [OPTIONS]
 Create an SSH tunnel without port forwarding:
 
 ```bash
-rssh-tunnel tunnel \
+rush-tunnel tunnel \
     --jump-host-user <jump_host_user> \
     --jump-host-address <jump_host_address> \
     --target-host-user <target_host_user> \
@@ -69,7 +69,7 @@ rssh-tunnel tunnel \
 Create an SSH tunnel with port forwarding:
 
 ```bash
-rssh-tunnel tunnel \
+rush-tunnel tunnel \
     --jump-host-user <jump_host_user> \
     --jump-host-address <jump_host_address> \
     --target-host-user <target_host_user> \
@@ -84,7 +84,7 @@ Replace `<jump_host_user>`, `<jump_host_address>`, `<target_host_user>`, `<targe
 ### Connect with Profile
 You can connect to an SSH tunnel using a profile name with the following command:
 ```bash
-rssh-tunnel connect --profile <profile_name>
+rush-tunnel connect --profile <profile_name>
 ```
 Replace `<profile_name>` with the name of the profile you want to connect to.
 
@@ -93,12 +93,12 @@ You can also manage your profiles by listing all profiles or checking the profil
 
 To list all profiles:
 ```bash
-rssh-tunnel profiles
+rush-tunnel profiles
 ```
 
 To show the profiles directory path:
 ```bash
-rssh-tunnel path
+rush-tunnel path
 ```
 
 # License

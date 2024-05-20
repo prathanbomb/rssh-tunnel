@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
-#[structopt(name = "rssh-tunnel", about = "SSH Tunnel CLI")]
+#[structopt(name = "rush-tunnel", about = "SSH Tunnel CLI")]
 enum Cli {
     #[structopt(about = "Interactive mode")]
     Interactive,
@@ -51,7 +51,7 @@ enum Cli {
 }
 
 #[derive(Serialize, Deserialize)]
-struct SshConfig {
+pub struct SshConfig {
     jump_host_user: String,
     jump_host: String,
     target_host_user: String,
@@ -144,36 +144,19 @@ impl SshConfig {
     }
 }
 
-struct SshProfileConfig {
-    profile_name: String,
-    ssh_config: SshConfig,
-}
-
-impl SshProfileConfig {
-    fn new(profile_name: String, ssh_config: SshConfig) -> Self {
-        SshProfileConfig {
-            profile_name,
-            ssh_config,
-        }
-    }
-}
-
 fn get_profiles_dir() -> Result<String> {
     let home_dir = dirs::home_dir().context("Failed to get home directory")?;
-    let profiles_dir = home_dir.join(".rssh-tunnel");
+    let profiles_dir = home_dir.join(".rush-tunnel");
     Ok(profiles_dir.to_string_lossy().to_string())
 }
 
-fn load_profile(profile_name: &str) -> Result<SshProfileConfig> {
+fn load_profile(profile_name: &str) -> Result<SshConfig> {
     let profiles_dir = get_profiles_dir()?;
     let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
     let toml_str =
         fs::read_to_string(profile_path).context("Failed to read profile file")?;
     let ssh_config: SshConfig = toml::from_str(&toml_str)?;
-    Ok(SshProfileConfig::new(
-        profile_name.to_string(),
-        ssh_config,
-    ))
+    Ok(ssh_config)
 }
 
 fn save_profile(profile_name: &str, ssh_config: &SshConfig) -> Result<()> {
@@ -268,9 +251,9 @@ async fn main() -> Result<()> {
             println!("SSH tunnel closed gracefully!");
         }
         Cli::Connect { profile } => {
-            let profile_config = load_profile(&profile)
+            let ssh_config = load_profile(&profile)
                 .context(format!("Failed to load profile '{}'", profile))?;
-            establish_tunnel(&profile_config.ssh_config)?;
+            establish_tunnel(&ssh_config)?;
             println!("SSH tunnel closed gracefully!");
         }
         Cli::Profiles => {
