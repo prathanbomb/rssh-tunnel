@@ -3,9 +3,13 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use inquire::{Confirm, Text};
+use inquire::{Confirm, CustomType, Password, Select, Text};
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
+
+use crate::crypto::{encrypt_password, is_password_strong};
+
+mod crypto;
 
 #[derive(StructOpt)]
 #[structopt(name = "rush-tunnel", about = "SSH Tunnel CLI")]
@@ -28,19 +32,19 @@ enum Cli {
         target_host_address: Option<String>,
 
         #[structopt(long, help = "Jump host SSH port (default: 22)")]
-        jump_port: Option<String>,
+        jump_port: Option<i16>,
 
         #[structopt(long, help = "Target host SSH port (default: 22)")]
-        target_port: Option<String>,
+        target_port: Option<i16>,
 
         #[structopt(long, help = "Port to forward (default: no)")]
-        port_forward: Option<String>,
+        port_forward: Option<i16>,
     },
 
     #[structopt(about = "Connect to SSH tunnel with profile name")]
     Connect {
         #[structopt(long, help = "Profile name to use")]
-        profile: String,
+        profile: Option<String>,
     },
 
     #[structopt(about = "List all profiles")]
@@ -50,87 +54,36 @@ enum Cli {
     Path,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct SshConfig {
     jump_host_user: String,
     jump_host: String,
     target_host_user: String,
     target_host: String,
-    jump_port: String,
-    target_port: String,
-    port_forward: Option<String>,
-}
-
-impl Default for SshConfig {
-    fn default() -> Self {
-        SshConfig {
-            jump_host_user: String::default(),
-            jump_host: String::default(),
-            target_host_user: String::default(),
-            target_host: String::default(),
-            jump_port: String::from("22"),
-            target_port: String::from("22"),
-            port_forward: None,
-        }
-    }
+    jump_port: i16,
+    target_port: i16,
+    port_forward: Option<i16>,
+    enc1: Option<String>,
+    enc2: Option<String>,
 }
 
 impl SshConfig {
     fn from_interactive_input() -> Result<Self> {
-        let jump_host_user = Text::new("Enter jump host username:")
-            .prompt()
-            .context("Failed to get jump host username")?;
-        let jump_host = Text::new("Enter jump host address:")
-            .prompt()
-            .context("Failed to get jump host address")?;
-        let target_host_user = Text::new("Enter target host username:")
-            .prompt()
-            .context("Failed to get target host username")?;
-        let target_host = Text::new("Enter target host address:")
-            .prompt()
-            .context("Failed to get target host address")?;
-        let jump_port = Text::new("Enter jump host SSH port (default: 22):")
-            .with_default("22")
-            .prompt()
-            .context("Failed to get jump host port")?;
-        let target_port = Text::new("Enter target host SSH port (default: 22):")
-            .with_default("22")
-            .prompt()
-            .context("Failed to get target host port")?;
-        let port_forward = Text::new("Port-Forward? (default: no)")
-            .prompt()
+        let jump_host_user = prompt_input("Enter jump host username:")?;
+        let jump_host = prompt_input("Enter jump host address:")?;
+        let target_host_user = prompt_input("Enter target host username:")?;
+        let target_host = prompt_input("Enter target host address:")?;
+        let jump_port = prompt_port("Enter jump host SSH port (default: 22):", 22)?;
+        let target_port = prompt_port("Enter target host SSH port (default: 22):", 22)?;
+        let port_forward = CustomType::<i16>::new("Port-Forward? (default: no)")
+            .prompt_skippable()
             .context("Failed to confirm port-forward")?;
 
-        Ok(SshConfig {
-            jump_host_user,
-            jump_host,
-            target_host_user,
-            target_host,
-            jump_port,
-            target_port,
-            port_forward: Some(port_forward),
-        })
-    }
-
-    fn from_non_interactive_input(
-        jump_host_user: Option<String>,
-        jump_host_address: Option<String>,
-        target_host_user: Option<String>,
-        target_host_address: Option<String>,
-        jump_port: Option<String>,
-        target_port: Option<String>,
-        port_forward: Option<String>,
-    ) -> Result<Self> {
-        let jump_host_user = jump_host_user
-            .ok_or_else(|| anyhow::anyhow!("Missing jump host username"))?;
-        let jump_host = jump_host_address
-            .ok_or_else(|| anyhow::anyhow!("Missing jump host address"))?;
-        let target_host_user = target_host_user
-            .ok_or_else(|| anyhow::anyhow!("Missing target host username"))?;
-        let target_host = target_host_address
-            .ok_or_else(|| anyhow::anyhow!("Missing target host address"))?;
-        let jump_port = jump_port.unwrap_or_else(|| "22".to_string());
-        let target_port = target_port.unwrap_or_else(|| "22".to_string());
+        let (enc1, enc2) = if Confirm::new("Save password?").with_default(false).prompt()? {
+            get_encrypted_passwords()?
+        } else {
+            (None, None)
+        };
 
         Ok(SshConfig {
             jump_host_user,
@@ -140,7 +93,73 @@ impl SshConfig {
             jump_port,
             target_port,
             port_forward,
+            enc1,
+            enc2,
         })
+    }
+
+    fn from_non_interactive_input(
+        jump_host_user: Option<String>,
+        jump_host_address: Option<String>,
+        target_host_user: Option<String>,
+        target_host_address: Option<String>,
+        jump_port: Option<i16>,
+        target_port: Option<i16>,
+        port_forward: Option<i16>,
+    ) -> Result<Self> {
+        let jump_host_user = jump_host_user.ok_or_else(|| anyhow::anyhow!("Missing jump host username"))?;
+        let jump_host = jump_host_address.ok_or_else(|| anyhow::anyhow!("Missing jump host address"))?;
+        let target_host_user = target_host_user.ok_or_else(|| anyhow::anyhow!("Missing target host username"))?;
+        let target_host = target_host_address.ok_or_else(|| anyhow::anyhow!("Missing target host address"))?;
+        let jump_port = jump_port.unwrap_or(22);
+        let target_port = target_port.unwrap_or(22);
+
+        let (enc1, enc2) = if Confirm::new("Save password?").with_default(false).prompt()? {
+            get_encrypted_passwords()?
+        } else {
+            (None, None)
+        };
+
+        Ok(SshConfig {
+            jump_host_user,
+            jump_host,
+            target_host_user,
+            target_host,
+            jump_port,
+            target_port,
+            port_forward,
+            enc1,
+            enc2,
+        })
+    }
+}
+
+fn prompt_input(message: &str) -> Result<String> {
+    Text::new(message)
+        .prompt()
+        .context(format!("Failed to get {}", message))
+}
+
+fn prompt_port(message: &str, default: i16) -> Result<i16> {
+    CustomType::<i16>::new(message)
+        .with_default(default)
+        .with_error_message("Please enter a valid port number between 1 and 65535")
+        .prompt()
+        .context(format!("Failed to get {}", message))
+}
+
+fn get_encrypted_passwords() -> Result<(Option<String>, Option<String>)> {
+    let pj = Password::new("Enter password for jump host:").prompt()?;
+    let pt = Password::new("Enter password for target host:").prompt()?;
+    let mp = Password::new("Enter master password:").prompt()?;
+
+    if is_password_strong(&mp) {
+        let enc1 = Some(encrypt_password(&mp, &pj).expect("Failed to encrypt jump host password"));
+        let enc2 = Some(encrypt_password(&mp, &pt).expect("Failed to encrypt target host password"));
+        Ok((enc1, enc2))
+    } else {
+        println!("Master password is not strong enough.");
+        Ok((None, None))
     }
 }
 
@@ -153,10 +172,8 @@ fn get_profiles_dir() -> Result<String> {
 fn load_profile(profile_name: &str) -> Result<SshConfig> {
     let profiles_dir = get_profiles_dir()?;
     let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
-    let toml_str =
-        fs::read_to_string(profile_path).context("Failed to read profile file")?;
-    let ssh_config: SshConfig = toml::from_str(&toml_str)?;
-    Ok(ssh_config)
+    let toml_str = fs::read_to_string(profile_path).context("Failed to read profile file")?;
+    toml::from_str(&toml_str).context("Failed to deserialize profile")
 }
 
 fn save_profile(profile_name: &str, ssh_config: &SshConfig) -> Result<()> {
@@ -164,63 +181,43 @@ fn save_profile(profile_name: &str, ssh_config: &SshConfig) -> Result<()> {
     fs::create_dir_all(&profiles_dir).context("Failed to create profiles directory")?;
     let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
     let toml_str = toml::to_string(&ssh_config).context("Failed to serialize profile")?;
-    fs::write(profile_path, toml_str).context("Failed to write profile file")?;
-    Ok(())
+    fs::write(profile_path, toml_str).context("Failed to write profile file")
 }
 
-fn save_or_overwrite_profile(
-    profile_name: &str,
-    ssh_config: &SshConfig,
-) -> Result<()> {
+fn save_or_overwrite_profile(profile_name: &str, ssh_config: &SshConfig) -> Result<()> {
     let profiles_dir = get_profiles_dir()?;
     let profile_path = Path::new(&profiles_dir).join(format!("{}.toml", profile_name));
 
-    if profile_path.exists() {
-        let overwrite_prompt = Confirm::new(&format!(
-            "Profile '{}' already exists. Overwrite?",
-            profile_name
-        ))
-            .prompt()?;
-        if !overwrite_prompt {
-            return Ok(());
-        }
+    if profile_path.exists()
+        && !Confirm::new(&format!("Profile '{}' already exists. Overwrite?", profile_name))
+        .prompt()?
+    {
+        return Ok(());
     }
-    save_profile(profile_name, ssh_config)?;
 
-    Ok(())
+    save_profile(profile_name, ssh_config)
 }
 
-fn list_profiles() -> Result<()> {
+fn list_profiles() -> Result<Option<Vec<String>>> {
     let profiles_dir = get_profiles_dir()?;
     let profiles_path = Path::new(&profiles_dir);
 
     if !profiles_path.exists() {
-        println!("No profiles found.");
-        return Ok(());
+        return Ok(None);
     }
 
-    let mut profiles = Vec::new();
-    for entry in fs::read_dir(profiles_path)? {
-        let entry = entry?;
-        if let Some(extension) = entry.path().extension() {
-            if extension == "toml" {
-                if let Some(file_stem) = entry.path().file_stem() {
-                    profiles.push(file_stem.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
+    let profiles = fs::read_dir(profiles_path)?
+        .filter_map(|entry| {
+            entry.ok().and_then(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|ext| if ext == "toml" { Some(e) } else { None })
+                    .and_then(|e| e.path().file_stem().map(|s| s.to_string_lossy().to_string()))
+            })
+        })
+        .collect::<Vec<_>>();
 
-    if profiles.is_empty() {
-        println!("No profiles found.");
-    } else {
-        println!("List of profiles:");
-        for profile in profiles {
-            println!(" - {}", profile);
-        }
-    }
-
-    Ok(())
+    Ok(Some(profiles))
 }
 
 #[tokio::main]
@@ -230,12 +227,20 @@ async fn main() -> Result<()> {
     match cli {
         Cli::Interactive => {
             let config = SshConfig::from_interactive_input()?;
-            let profile_name = Text::new("Enter profile name:").prompt()?;
+            let profile_name = prompt_input("Enter profile name:")?;
             save_or_overwrite_profile(&profile_name, &config)?;
             establish_tunnel(&config)?;
             println!("SSH tunnel closed gracefully!");
         }
-        Cli::Tunnel { jump_host_user, jump_host_address, target_host_user, target_host_address, jump_port, target_port, port_forward } => {
+        Cli::Tunnel {
+            jump_host_user,
+            jump_host_address,
+            target_host_user,
+            target_host_address,
+            jump_port,
+            target_port,
+            port_forward,
+        } => {
             let config = SshConfig::from_non_interactive_input(
                 jump_host_user,
                 jump_host_address,
@@ -245,19 +250,33 @@ async fn main() -> Result<()> {
                 target_port,
                 port_forward,
             )?;
-            let profile_name = Text::new("Enter profile name:").prompt()?;
+            let profile_name = prompt_input("Enter profile name:")?;
             save_or_overwrite_profile(&profile_name, &config)?;
             establish_tunnel(&config)?;
             println!("SSH tunnel closed gracefully!");
         }
         Cli::Connect { profile } => {
-            let ssh_config = load_profile(&profile)
-                .context(format!("Failed to load profile '{}'", profile))?;
-            establish_tunnel(&ssh_config)?;
+            if profile.is_none() {
+                let profiles = list_profiles().expect("Failed to list profiles");
+                let selected = Select::<String>::new("Select profile:", profiles.unwrap()).prompt()?;
+                let ssh_config = load_profile(&selected)?;
+                establish_tunnel(&ssh_config)?;
+            } else {
+                let ssh_config =
+                    load_profile(&profile.clone().unwrap()).context(format!("Failed to load profile '{:?}'", &profile))?;
+                establish_tunnel(&ssh_config)?;
+            }
             println!("SSH tunnel closed gracefully!");
         }
         Cli::Profiles => {
-            list_profiles()?;
+            let profiles = list_profiles()?;
+            if let Some(profiles) = profiles {
+                for profile in profiles {
+                    println!("- {}", profile);
+                }
+            } else {
+                println!("No profiles found");
+            }
         }
         Cli::Path => {
             let profiles_dir = get_profiles_dir()?;
@@ -269,19 +288,36 @@ async fn main() -> Result<()> {
 }
 
 fn establish_tunnel(config: &SshConfig) -> Result<()> {
-    let jump_ssh_args = format!("-J {}@{}:{}", config.jump_host_user, config.jump_host, config.jump_port);
+    println!("SSH Configuration:");
+    println!(
+        "  Jump Host:        {}@{}:{}",
+        config.jump_host_user, config.jump_host, config.jump_port
+    );
+    println!(
+        "  Target Host:      {}@{}:{}",
+        config.target_host_user, config.target_host, config.target_port
+    );
+
+    let jump_ssh_args = format!(
+        "-J {}@{}:{}",
+        config.jump_host_user, config.jump_host, config.jump_port
+    );
 
     let mut command = Command::new("ssh");
     command
         .arg(jump_ssh_args)
         .arg(format!("{}@{}", config.target_host_user, config.target_host))
         .arg("-p")
-        .arg(&config.target_port);
+        .arg(&config.target_port.to_string());
     if let Some(local_port) = &config.port_forward {
         command
             .arg("-L")
-            .arg(format!("{}:{}:{}", local_port, config.target_host, config.target_port));
+            .arg(format!(
+                "{}:{}:{}",
+                local_port, config.target_host, config.target_port
+            ));
     }
+
     command
         .status()
         .context("Failed to establish SSH tunnel with port forwarding")?;
